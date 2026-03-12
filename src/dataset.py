@@ -36,6 +36,14 @@ class CelebrityFacesDataset(Dataset):
 
         return image, 0
 
+    def to_numpy(self):
+        images = []
+        for file in self.image_files:
+            img, _ = self[file]
+            img_array = np.array(img, dtype=np.float32)
+            images.append(img_array)
+        return np.stack(images)  # (num_images, height, width)
+
 
 class TransformedSubset(Dataset):
     def __init__(self, subset, transform=None):
