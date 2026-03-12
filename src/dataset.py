@@ -66,6 +66,8 @@ class TransformedSubset(Dataset):
         """Convert all images in the subset to a NumPy array."""
         images = []
         for idx in range(len(self.subset)):
+            if idx % 100 == 0:
+                print(f"File: {idx}")
             img, _ = self[idx]
             img_array = np.array(img, dtype=np.float32)
             images.append(img_array)
