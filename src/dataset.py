@@ -38,7 +38,8 @@ class CelebrityFacesDataset(Dataset):
 
     def to_numpy(self):
         images = []
-        for i, file in enumerate(self.image_files):
+        i = 0
+        for file in self.image_files:
             if i % 100 == 0:
                 print(f"File: {i}")
             img, _ = self[file]
