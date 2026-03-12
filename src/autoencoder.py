@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class ResBlock(nn.Module):
@@ -142,3 +143,83 @@ class SpatialVAE(nn.Module):
         z = self.reparameterize(mean, logvar)
         recon = self.decode(z)
         return recon, mean, logvar, z
+
+
+class PatchDiscriminator(nn.Module):
+    """
+    Classifies 70×70 overlapping patches as real/fake.
+    Doesn't need to see the whole image — judges local texture quality.
+    """
+
+    def __init__(self, in_ch=1):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_ch, 64, 4, stride=2, padding=1),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(64, 128, 4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(128, 256, 4, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(256),
+            nn.LeakyReLU(0.2, inplace=True),
+            nn.Conv2d(256, 1, 4, padding=1),  # patch-level prediction
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class SharpReconLoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # Laplacian kernel detects edges
+        lap = torch.tensor([[0, 1, 0], [1, -4, 1], [0, 1, 0]], dtype=torch.float32)
+        self.register_buffer("lap_kernel", lap.view(1, 1, 3, 3))
+
+        # Sobel kernels detect directional gradients
+        sx = torch.tensor([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]], dtype=torch.float32)
+        sy = sx.T
+        self.register_buffer("sobel_x", sx.view(1, 1, 3, 3))
+        self.register_buffer("sobel_y", sy.view(1, 1, 3, 3))
+
+    def edge_loss(self, pred, target):
+        pred_edges = F.conv2d(pred, self.lap_kernel, padding=1)
+        target_edges = F.conv2d(target, self.lap_kernel, padding=1)
+        return F.l1_loss(pred_edges, target_edges)
+
+    def gradient_loss(self, pred, target):
+        pred_gx = F.conv2d(pred, self.sobel_x, padding=1)
+        pred_gy = F.conv2d(pred, self.sobel_y, padding=1)
+        target_gx = F.conv2d(target, self.sobel_x, padding=1)
+        target_gy = F.conv2d(target, self.sobel_y, padding=1)
+        return F.l1_loss(pred_gx, target_gx) + F.l1_loss(pred_gy, target_gy)
+
+    def ssim_loss(self, pred, target, window_size=11):
+        C1, C2 = 0.01**2, 0.03**2
+        pad = window_size // 2
+        mu_p = F.avg_pool2d(pred, window_size, 1, padding=pad)
+        mu_t = F.avg_pool2d(target, window_size, 1, padding=pad)
+        sigma_pp = F.avg_pool2d(pred**2, window_size, 1, padding=pad) - mu_p**2
+        sigma_tt = F.avg_pool2d(target**2, window_size, 1, padding=pad) - mu_t**2
+        sigma_pt = (
+            F.avg_pool2d(pred * target, window_size, 1, padding=pad) - mu_p * mu_t
+        )
+        ssim = ((2 * mu_p * mu_t + C1) * (2 * sigma_pt + C2)) / (
+            (mu_p**2 + mu_t**2 + C1) * (sigma_pp + sigma_tt + C2)
+        )
+        return 1 - ssim.mean()
+
+    def forward(self, pred, target):
+        l1 = F.l1_loss(pred, target)
+        ssim = self.ssim_loss(pred, target)
+        edge = self.edge_loss(pred, target)
+        grad = self.gradient_loss(pred, target)
+
+        total = l1 + 0.5 * ssim + 0.3 * edge + 0.2 * grad
+
+        return total, {
+            "l1": l1.item(),
+            "ssim": ssim.item(),
+            "edge": edge.item(),
+            "grad": grad.item(),
+        }

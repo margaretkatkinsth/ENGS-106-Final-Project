@@ -31,7 +31,7 @@ class CelebrityFacesDataset(Dataset):
         try:
             with Image.open(path) as img:
                 img = img.convert(self.mode)
-        except (UnidentifiedImageError, OSError):
+        except UnidentifiedImageError, OSError:
             print("Skipping:", path)
             raise ValueError
 
