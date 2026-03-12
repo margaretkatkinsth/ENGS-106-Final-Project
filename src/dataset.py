@@ -74,7 +74,7 @@ class CelebrityFacesDatasetCached(Dataset):
                     try:
                         img = Image.open(path).convert("L")
                         self.images.append(img)
-                    except UnidentifiedImageError, OSError:
+                    except (UnidentifiedImageError, OSError):
                         # Skip corrupted images
                         continue
 
