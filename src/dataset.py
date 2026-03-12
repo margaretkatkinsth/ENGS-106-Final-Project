@@ -28,7 +28,7 @@ class CelebrityFacesDataset(Dataset):
         img_path = self.image_files[idx]
         try:
             image = Image.open(img_path).convert("L")
-        except UnidentifiedImageError, OSError:
+        except (UnidentifiedImageError, OSError):
             return self.__getitem__((idx + 1) % len(self.image_files))
 
         if self.transform:
