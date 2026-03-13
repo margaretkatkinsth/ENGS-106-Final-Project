@@ -109,10 +109,8 @@ class AffineCoupling(nn.Module):
             nn.GroupNorm(8, hidden_channels),
             nn.SiLU(inplace=True),
             nn.Conv2d(hidden_channels, channels, 3, padding=1),
-            # channels = half * 2, for scale and translation
         )
 
-        # Zero-init last layer for identity initialization
         last = cast(nn.Conv2d, self.net[-1])
         nn.init.zeros_(cast(torch.Tensor, last.weight))
         nn.init.zeros_(cast(torch.Tensor, last.bias))
@@ -122,7 +120,6 @@ class AffineCoupling(nn.Module):
 
         st = self.net(xa)
         log_s, t = st.chunk(2, dim=1)
-        # Clamp for stability
         log_s = torch.tanh(log_s) * 3.0
 
         yb = xb * torch.exp(log_s) + t
